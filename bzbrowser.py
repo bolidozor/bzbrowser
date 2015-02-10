@@ -71,11 +71,26 @@ BLACK = sdl2.ext.Color(0, 0, 0, 255)
 
 
 def main():
+    if len(sys.argv) < 2:
+        sys.stderr.write("Invalid number of arguments.\n")
+        sys.stderr.write("Usage: %s BASE_URL, NEXT_BASE_URL \n" % (sys.argv[0], ))
+        sys.stderr.write("Example: %s http://space.astro.cz/bolidozor/OBSUPICE/OBSUPICE-R3/\n" % (sys.argv[0], ))
+        sys.exit(1)
+
+    WINDOWS = len(sys.argv) - 1
     SDL_Init(SDL_INIT_VIDEO)
-    window = SDL_CreateWindow(b"Bolidozor Snapshot Browser",
-                              SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                              430, 600, SDL_WINDOW_SHOWN)
-    windowsurface = SDL_GetWindowSurface(window)
+
+    connector = []
+    window = []
+    windowsurface = []
+
+    for i in range(0, WINDOWS): 
+        connector.append(bzpost.HTTPConnector(sys.argv[i+1]))
+        connector[i].connect()
+        window.append(SDL_CreateWindow("Bolidozor Snapshot Browser " + connector[i].base_url,
+                                  SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+                                  500, 600, SDL_WINDOW_SHOWN))
+        windowsurface.append(SDL_GetWindowSurface(window[i]))
 
     main_thread_queue = Queue.Queue()
 
@@ -88,8 +103,6 @@ def main():
 
     thpool = mpdummy.Pool(processes=3)
 
-    connector = bzpost.HTTPConnector("http://space.astro.cz/bolidozor/OBSUPICE/OBSUPICE-R3/")
-    connector.connect()
 
     drawable_snapshots = []
 
@@ -118,8 +131,10 @@ def main():
                                        'imgdata': rgbimg})
         run_on_main_thread(finish)
 
-    collection = SnapshotCollection(connector,
-                                    lambda a: thpool.apply_async(put_up_snapshot, (a,)))
+    collection=[]
+    for i in range(0, WINDOWS): 
+        collection.append(SnapshotCollection(connector[i],
+                                        lambda a: thpool.apply_async(put_up_snapshot, (a,))))
 
     time = 1421000000
     running = True
@@ -133,8 +148,15 @@ def main():
                 running = False
                 break
 
+            if event.type == SDL_WINDOWEVENT_CLOSE:
+                for i in range(0, WINDOWS): 
+                    if event.window.windowID == window[i].windowID:
+                        SDL_HideWindow(window[i])
+                break
+
+
             if event.type == SDL_MOUSEWHEEL:
-                time -= event.wheel.y * 10 * TIME_PER_PIX
+                time -= event.wheel.y * 50 * TIME_PER_PIX
                 break
 
             if event.type == SDL_USEREVENT:
@@ -144,18 +166,21 @@ def main():
 
                     break
 
-        collection.cover(time - 800 * TIME_PER_PIX * 4,
-                         time + 800 * TIME_PER_PIX * 5)
+        for i in range(0, WINDOWS): 
+            collection[i].cover(time - 800 * TIME_PER_PIX * 4,
+                             time + 800 * TIME_PER_PIX * 5)
+            sdl2.ext.fill(windowsurface[i].contents, BLACK)
 
-        sdl2.ext.fill(windowsurface.contents, BLACK)
+        for i in range(0, WINDOWS): 
+            for snapshot in drawable_snapshots:
+                y = (snapshot['time'] - bzpost.normalize_time(int(time))).total_seconds() / TIME_PER_PIX
+                SDL_BlitSurface(snapshot['surface'], None, windowsurface[i], SDL_Rect(10, int(y), 0, 0))
 
-        for snapshot in drawable_snapshots:
-            y = (snapshot['time'] - bzpost.normalize_time(int(time))).total_seconds() / TIME_PER_PIX
-            SDL_BlitSurface(snapshot['surface'], None, windowsurface, SDL_Rect(10, int(y), 0, 0))
+        for i in range(0, WINDOWS): 
+            SDL_UpdateWindowSurface(window[i])
 
-        SDL_UpdateWindowSurface(window)
-
-    SDL_DestroyWindow(window)
+    for i in range(0, WINDOWS): 
+        SDL_DestroyWindow(window[i])
     SDL_Quit()
 
     return 0
