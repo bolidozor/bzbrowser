@@ -77,21 +77,19 @@ def main():
         sys.stderr.write("Example: %s http://space.astro.cz/bolidozor/OBSUPICE/OBSUPICE-R3/\n" % (sys.argv[0], ))
         sys.exit(1)
 
-    WINDOWS = len(sys.argv) - 1
     SDL_Init(SDL_INIT_VIDEO)
 
-    connector = []
-    window = []
-    windowsurface = []
+    windows = {}
 
-    for i in range(0, WINDOWS): 
-        connector.append(bzpost.HTTPConnector(sys.argv[i+1]))
-        connector[i].connect()
-        window.append(SDL_CreateWindow("Bolidozor Snapshot Browser " + connector[i].base_url,
+    for i in range(0, len(sys.argv) - 1): 
+        connector = bzpost.HTTPConnector(sys.argv[i+1])
+        connector.connect()
+        window = SDL_CreateWindow(connector.base_url,
                                   SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                  500, 600, SDL_WINDOW_SHOWN))
-        windowsurface.append(SDL_GetWindowSurface(window[i]))
-
+                                  500, 600, SDL_WINDOW_SHOWN)
+        window_id = SDL_GetWindowID(window) 
+        windows[window_id] = {'window': window,'window_surface':SDL_GetWindowSurface(window), 'connector': connector }
+        
     main_thread_queue = Queue.Queue()
 
     def run_on_main_thread(func):
@@ -131,9 +129,9 @@ def main():
         run_on_main_thread(finish)
 
     collection=[]
-    for i in range(0, WINDOWS): 
-        collection.append(SnapshotCollection(connector[i],
-                                        lambda a: thpool.apply_async(put_up_snapshot, (a,i,))))
+    for window in windows.keys(): 
+        collection.append(SnapshotCollection(windows[window]['connector'],
+                                        lambda a: thpool.apply_async(put_up_snapshot, (a,window,))))
 
     time = 1421000000
     running = True
@@ -165,21 +163,22 @@ def main():
 
                     break
 
-        for i in range(0, WINDOWS): 
-            collection[i].cover(time - 800 * TIME_PER_PIX * 4,
+        for window in collection: 
+            window.cover(time - 800 * TIME_PER_PIX * 4,
                              time + 800 * TIME_PER_PIX * 5)
-            sdl2.ext.fill(windowsurface[i].contents, BLACK)
 
+        for window in windows.keys(): 
+            sdl2.ext.fill(windows[window]['window_surface'].contents, BLACK)
 
         for snapshot in drawable_snapshots:
             y = (snapshot['time'] - bzpost.normalize_time(int(time))).total_seconds() / TIME_PER_PIX
-            SDL_BlitSurface(snapshot['surface'], None, windowsurface[snapshot['window_id']], SDL_Rect(10, int(y), 0, 0))
+            SDL_BlitSurface(snapshot['surface'], None, windows[snapshot['window_id']]['window_surface'], SDL_Rect(10, int(y), 0, 0))
 
-        for i in range(0, WINDOWS): 
-            SDL_UpdateWindowSurface(window[i])
+        for window in windows.keys(): 
+            SDL_UpdateWindowSurface(windows[window]['window'])
 
-    for i in range(0, WINDOWS): 
-        SDL_DestroyWindow(window[i])
+    for window in windows.keys(): 
+        SDL_DestroyWindow(windows[window]['window'])
     SDL_Quit()
 
     return 0
