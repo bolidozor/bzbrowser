@@ -106,7 +106,7 @@ def main():
 
     drawable_snapshots = []
 
-    def put_up_snapshot(snapshot):
+    def put_up_snapshot(snapshot, station):
         print "downloading %s..." % snapshot.url
 
         fits = pyfits.open(StringIO.StringIO(urllib2.urlopen(snapshot.url).read()))
@@ -126,15 +126,14 @@ def main():
             h, w = img.shape
             surface = SDL_CreateRGBSurfaceFrom(rgbimg.ctypes.data, w, h, 24,
                                                3 * w, 0, 0, 0, 0)
-
             drawable_snapshots.append({'time': snapshot.time, 'surface': surface,
-                                       'imgdata': rgbimg})
+                                       'imgdata': rgbimg, 'window_id': station})
         run_on_main_thread(finish)
 
     collection=[]
     for i in range(0, WINDOWS): 
         collection.append(SnapshotCollection(connector[i],
-                                        lambda a: thpool.apply_async(put_up_snapshot, (a,))))
+                                        lambda a: thpool.apply_async(put_up_snapshot, (a,i,))))
 
     time = 1421000000
     running = True
@@ -171,10 +170,10 @@ def main():
                              time + 800 * TIME_PER_PIX * 5)
             sdl2.ext.fill(windowsurface[i].contents, BLACK)
 
-        for i in range(0, WINDOWS): 
-            for snapshot in drawable_snapshots:
-                y = (snapshot['time'] - bzpost.normalize_time(int(time))).total_seconds() / TIME_PER_PIX
-                SDL_BlitSurface(snapshot['surface'], None, windowsurface[i], SDL_Rect(10, int(y), 0, 0))
+
+        for snapshot in drawable_snapshots:
+            y = (snapshot['time'] - bzpost.normalize_time(int(time))).total_seconds() / TIME_PER_PIX
+            SDL_BlitSurface(snapshot['surface'], None, windowsurface[snapshot['window_id']], SDL_Rect(10, int(y), 0, 0))
 
         for i in range(0, WINDOWS): 
             SDL_UpdateWindowSurface(window[i])
