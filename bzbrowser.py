@@ -70,6 +70,29 @@ TIME_PER_PIX = 60.0 / 352
 BLACK = sdl2.ext.Color(0, 0, 0, 255)
 
 
+class Window(object):
+    def __init__(self, connector):
+        self.sdl_window = SDL_CreateWindow(
+            connector.base_url,
+            SDL_WINDOWPOS_CENTERED,
+            SDL_WINDOWPOS_CENTERED,
+            500, 600,
+            SDL_WINDOW_SHOWN
+        )
+        self.sdl_surface = SDL_GetWindowSurface(self.sdl_window)
+        self.window_id = SDL_GetWindowID(self.sdl_window)
+        self.connector = connector
+    
+    def handle_event(self, event):
+        pass
+
+    def render(self, snapshot_surface):
+        sdl2.ext.fill(self.sdl_surface.contents, BLACK)
+        y = (snapshot['time'] - bzpost.normalize_time(int(time))).total_seconds() / TIME_PER_PIX
+        SDL_BlitSurface(snapshot_surface, None, self.sdl_surface, SDL_Rect(10, int(y), 0, 0))
+        SDL_UpdateWindowSurface(self.sdl_window)
+
+
 def main():
     if len(sys.argv) < 2:
         sys.stderr.write("Invalid number of arguments.\n")
@@ -79,7 +102,7 @@ def main():
 
     SDL_Init(SDL_INIT_VIDEO)
 
-    windows = {}
+    windows = []
 
     for i in range(0, len(sys.argv) - 1): 
         try:
@@ -88,13 +111,12 @@ def main():
         except:
             print "Bolidozor browser connot contact Bolidozor's data center. Please check the internet connection", e
             sys.exit(main())
-
-
-        window = SDL_CreateWindow(connector.base_url,
-                                  SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                  500, 600, SDL_WINDOW_SHOWN)
-        window_id = SDL_GetWindowID(window) 
-        windows[window_id] = {'window': window,'window_surface':SDL_GetWindowSurface(window), 'connector': connector }
+        #window = SDL_CreateWindow(connector.base_url,
+        #                          SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        #                          500, 600, SDL_WINDOW_SHOWN)
+        #window_id = SDL_GetWindowID(window) 
+        #windows[window_id] = {'window': window,'window_surface':SDL_GetWindowSurface(window), 'connector': connector}
+        windows.append(Window(connector))
         
     main_thread_queue = Queue.Queue()
 
@@ -110,7 +132,7 @@ def main():
 
     drawable_snapshots = []
 
-    def put_up_snapshot(snapshot, station):
+    def put_up_snapshot(snapshot, window):
         print "downloading %s..." % snapshot.url
 
         fits = pyfits.open(StringIO.StringIO(urllib2.urlopen(snapshot.url).read()))
@@ -131,12 +153,12 @@ def main():
             surface = SDL_CreateRGBSurfaceFrom(rgbimg.ctypes.data, w, h, 24,
                                                3 * w, 0, 0, 0, 0)
             drawable_snapshots.append({'time': snapshot.time, 'surface': surface,
-                                       'imgdata': rgbimg, 'window_id': station})
+                                       'imgdata': rgbimg, 'window': window})
         run_on_main_thread(finish)
 
     collection=[]
-    for window in windows.keys(): 
-        collection.append(SnapshotCollection(windows[window]['connector'],
+    for window in windows: 
+        collection.append(SnapshotCollection(window,
                                         lambda a: thpool.apply_async(put_up_snapshot, (a,window,))))
 
     time = 1421000000
@@ -173,18 +195,11 @@ def main():
             window.cover(time - 800 * TIME_PER_PIX * 4,
                              time + 800 * TIME_PER_PIX * 5)
 
-        for window in windows.keys(): 
-            sdl2.ext.fill(windows[window]['window_surface'].contents, BLACK)
-
         for snapshot in drawable_snapshots:
-            y = (snapshot['time'] - bzpost.normalize_time(int(time))).total_seconds() / TIME_PER_PIX
-            SDL_BlitSurface(snapshot['surface'], None, windows[snapshot['window_id']]['window_surface'], SDL_Rect(10, int(y), 0, 0))
+            snapshot['window'].render(snaphot['surface'])
 
-        for window in windows.keys(): 
-            SDL_UpdateWindowSurface(windows[window]['window'])
-
-    for window in windows.keys(): 
-        SDL_DestroyWindow(windows[window]['window'])
+    for window in windows: 
+        SDL_DestroyWindow(window)
     SDL_Quit()
 
     return 0
