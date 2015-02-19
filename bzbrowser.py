@@ -82,8 +82,14 @@ def main():
     windows = {}
 
     for i in range(0, len(sys.argv) - 1): 
-        connector = bzpost.HTTPConnector(sys.argv[i+1])
-        connector.connect()
+        try:
+            connector = bzpost.HTTPConnector(sys.argv[i+1])
+            connector.connect()
+        except:
+            print "Bolidozor browser connot contact Bolidozor's data center. Please check the internet connection", e
+            sys.exit(main())
+
+
         window = SDL_CreateWindow(connector.base_url,
                                   SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                   500, 600, SDL_WINDOW_SHOWN)
