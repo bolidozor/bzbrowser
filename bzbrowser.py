@@ -3,14 +3,14 @@ import ctypes
 import sdl2.ext
 import multiprocessing.dummy as mpdummy
 import threading
-import Queue
+import queue
 import bzpost
-import pyfits
-import StringIO
-import urllib2
+import astropy.io.fits as pyfits
+import io 
+import urllib
 import numpy as np
 
-from httplib import BadStatusLine
+from http.client import BadStatusLine
 
 from sdl2 import *
 
@@ -27,7 +27,7 @@ class SnapshotCollection():
         self.thread = threading.Thread(target=self.async)
         self.thread.daemon = True
         self.covered_range = None
-        self.cover_reqs = Queue.Queue()
+        self.cover_reqs = queue.Queue()
 
         self.thread.start()
 
@@ -44,8 +44,8 @@ class SnapshotCollection():
             for ss in self.source.get_snapshots(a, b):
                 if b > ss.time >= a:
                     self.sink(ss)
-        except BadStatusLine, e:
-            print "oh no, a BadStatusLine!", e # TODO
+        except BadStatusLine as e:
+            print( "oh no, a BadStatusLine!", e) # TODO
             self.source.close()
             self.source.connect()
 
@@ -77,7 +77,7 @@ def main():
                               430, 600, SDL_WINDOW_SHOWN)
     windowsurface = SDL_GetWindowSurface(window)
 
-    main_thread_queue = Queue.Queue()
+    main_thread_queue = queue.Queue()
 
     def run_on_main_thread(func):
         main_thread_queue.put(func)
@@ -94,11 +94,11 @@ def main():
     drawable_snapshots = []
 
     def put_up_snapshot(snapshot):
-        print "downloading %s..." % snapshot.url
+        print( "downloading %s..." % snapshot.url)
+        x = urllib.request.urlopen(snapshot.url)
 
-        fits = pyfits.open(StringIO.StringIO(urllib2.urlopen(snapshot.url).read()))
-
-        print "downloading %s... done" % snapshot.url
+        fits = pyfits.open(io.BytesIO(x.read()))
+        print( "downloading %s... done" % snapshot.url)
 
         imunit = None
         for unit in fits:
@@ -113,9 +113,8 @@ def main():
             h, w = img.shape
             surface = SDL_CreateRGBSurfaceFrom(rgbimg.ctypes.data, w, h, 24,
                                                3 * w, 0, 0, 0, 0)
-
             drawable_snapshots.append({'time': snapshot.time, 'surface': surface,
-                                       'imgdata': rgbimg})
+		                               'imgdata': rgbimg})
         run_on_main_thread(finish)
 
     collection = SnapshotCollection(connector,
@@ -163,5 +162,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
-

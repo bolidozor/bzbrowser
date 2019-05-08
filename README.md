@@ -2,9 +2,13 @@
 
 An interactive browser of waterfall snapshots in the Bolidozor repository
 
+# Launguage
+
+Python3
+
 ## Dependencies
 
  * bzpost
  * pysdl2
- * pyfits
+ * astropy.io.fits
  * numpy
